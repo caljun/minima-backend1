@@ -13,7 +13,7 @@ app.use("/webhook", bodyParser.raw({ type: "application/json" }));
 app.use(cors({
   origin: [
     "http://localhost:5500",                        // 開発用（ローカル）
-    "https://iranai-frontend.vercel.app"           // 本番用（Vercel）
+    "https://minima-frontend-eta.vercel.app"
   ],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   credentials: true
