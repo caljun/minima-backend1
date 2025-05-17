@@ -1,20 +1,28 @@
 {
-  "name": "iranai-backend",
+  "name": "minima-backend",
   "version": "1.0.0",
+  "description": "Backend for Minima - A marketplace for items under 10000 yen",
   "main": "main.js",
   "scripts": {
-    "start": "node main.js"
+    "start": "node main.js",
+    "dev": "nodemon main.js"
   },
   "dependencies": {
-    "bcrypt": "^5.1.0",
-    "bcryptjs": "^3.0.2",
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "express-validator": "^7.0.1",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^7.3.1",
-    "multer": "^1.4.5-lts.2",
-    "multer-storage-cloudinary": "^4.0.0",
-    "stripe": "^18.1.0"
+    "mongoose": "^7.5.0",
+    "multer": "^1.4.5-lts.1",
+    "stripe": "^13.5.0",
+    "cloudinary": "^1.40.0",
+    "helmet": "^7.0.0",
+    "compression": "^1.7.4",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
   }
 }

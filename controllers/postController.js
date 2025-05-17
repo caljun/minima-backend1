@@ -1,35 +1,42 @@
 const Post = require("../models/Post");
 const Comment = require("../models/Comment");
 const Notification = require("../models/Notification");
+const cloudinary = require('../utils/cloudinary');
+const { validationResult } = require('express-validator');
 
 exports.createPost = async (req, res) => {
   try {
-    const { name, reason, price } = req.body;
-    const image = req.file?.path;
-
-    if (!name || !reason || !price || !image) {
-      return res.status(400).json({ message: "すべての項目を入力してください" });
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
     }
 
-    const priceNum = Number(price);
-    if (isNaN(priceNum) || priceNum < 1 || priceNum > 10000) {
-      return res.status(400).json({ message: "価格は1〜10000の数値で入力してください" });
-     }
+    const { name, price, description, category } = req.body;
+
+    // 価格チェック
+    if (price < 1 || price > 10000) {
+      return res.status(400).json({ message: '価格は1円から10000円の間で設定してください' });
+    }
+
+    // 画像のアップロード
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      folder: 'minima/posts'
+    });
 
     const post = new Post({
       name,
-      reason,
-      price : priceNum,
-      image,
-      email: req.user.email,
-      createdAt: new Date()
+      price,
+      description,
+      category,
+      imageUrl: result.secure_url,
+      seller: req.user.id
     });
 
-    const saved = await post.save();
-    res.status(201).json({ message: "投稿が保存されました", post: saved });
-  } catch (err) {
-    console.error("投稿保存エラー:", err);
-    res.status(500).json({ message: "投稿に失敗しました" });
+    await post.save();
+
+    res.status(201).json(post);
+  } catch (error) {
+    res.status(500).json({ message: 'サーバーエラーが発生しました' });
   }
 };
 
@@ -55,14 +62,20 @@ exports.getPostById = async (req, res) => {
 exports.deletePost = async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
-    if (!post) return res.status(404).json({ message: "投稿が見つかりません" });
-    if (post.email !== req.user.email)
-      return res.status(403).json({ message: "削除権限がありません" });
+    if (!post) {
+      return res.status(404).json({ message: '商品が見つかりません' });
+    }
 
-    await Post.findByIdAndDelete(req.params.id);
-    res.json({ message: "削除されました" });
-  } catch (err) {
-    res.status(500).json({ message: "削除に失敗しました" });
+    if (post.seller.toString() !== req.user.id) {
+      return res.status(403).json({ message: '権限がありません' });
+    }
+
+    post.status = 'deleted';
+    await post.save();
+
+    res.json({ message: '商品を削除しました' });
+  } catch (error) {
+    res.status(500).json({ message: 'サーバーエラーが発生しました' });
   }
 };
 
@@ -128,33 +141,145 @@ exports.getPostsByEmail = async (req, res) => {
 
 exports.updatePost = async (req, res) => {
   try {
-    const { name, reason, price } = req.body;
-    const image = req.file?.path;
-    const priceNum = Number(price);
-
-    if (!name || !reason || isNaN(priceNum) || priceNum < 1 || priceNum > 10000) {
-      return res.status(400).json({ message: "無効な入力です" });
-    }
-
+    const { name, price, description, category } = req.body;
     const post = await Post.findById(req.params.id);
-    if (!post) return res.status(404).json({ message: "投稿が見つかりません" });
 
-    if (post.email !== req.user.email) {
-      return res.status(403).json({ message: "編集権限がありません" });
+    if (!post) {
+      return res.status(404).json({ message: '商品が見つかりません' });
     }
 
-    // フィールド更新
-    post.name = name;
-    post.reason = reason;
-    post.price = priceNum;
-    if (image) post.image = image; // 画像がある場合のみ更新
+    if (post.seller.toString() !== req.user.id) {
+      return res.status(403).json({ message: '権限がありません' });
+    }
 
-    const updated = await post.save();
-    res.json({ message: "投稿が更新されました", post: updated });
+    if (post.sold) {
+      return res.status(400).json({ message: '売却済みの商品は編集できません' });
+    }
 
-  } catch (err) {
-    console.error("投稿更新エラー:", err);
-    res.status(500).json({ message: "投稿の更新に失敗しました" });
+    // 更新可能なフィールドを更新
+    post.name = name || post.name;
+    post.description = description || post.description;
+    post.category = category || post.category;
+
+    // 価格の更新（価格範囲チェック）
+    if (price) {
+      if (price < 1 || price > 10000) {
+        return res.status(400).json({ message: '価格は1円から10000円の間で設定してください' });
+      }
+      post.price = price;
+    }
+
+    // 新しい画像がある場合は更新
+    if (req.file) {
+      const result = await cloudinary.uploader.upload(req.file.path, {
+        folder: 'minima/posts'
+      });
+      post.imageUrl = result.secure_url;
+    }
+
+    await post.save();
+    res.json(post);
+  } catch (error) {
+    res.status(500).json({ message: 'サーバーエラーが発生しました' });
+  }
+};
+
+// 商品一覧の取得
+exports.getPosts = async (req, res) => {
+  try {
+    const { page = 1, price = 'all', sort = 'newest', category } = req.query;
+    const limit = 20;
+    const skip = (page - 1) * limit;
+
+    // クエリの構築
+    const query = { status: 'active' };
+    
+    // 価格フィルター
+    if (price !== 'all') {
+      const [min, max] = price.split('-').map(Number);
+      query.price = { $gte: min, $lte: max };
+    }
+
+    // カテゴリーフィルター
+    if (category) {
+      query.category = category;
+    }
+
+    // ソートの設定
+    let sortOption = {};
+    switch (sort) {
+      case 'price-low':
+        sortOption = { price: 1 };
+        break;
+      case 'price-high':
+        sortOption = { price: -1 };
+        break;
+      case 'popular':
+        sortOption = { views: -1 };
+        break;
+      default:
+        sortOption = { createdAt: -1 };
+    }
+
+    const posts = await Post.find(query)
+      .sort(sortOption)
+      .skip(skip)
+      .limit(limit)
+      .populate('seller', 'username avatar')
+      .select('-description');
+
+    const total = await Post.countDocuments(query);
+
+    res.json({
+      posts,
+      total,
+      hasMore: total > skip + posts.length
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'サーバーエラーが発生しました' });
+  }
+};
+
+// 商品の詳細取得
+exports.getPost = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id)
+      .populate('seller', 'username avatar')
+      .populate('likes', 'username');
+
+    if (!post) {
+      return res.status(404).json({ message: '商品が見つかりません' });
+    }
+
+    // 閲覧数をインクリメント
+    post.views += 1;
+    await post.save();
+
+    res.json(post);
+  } catch (error) {
+    res.status(500).json({ message: 'サーバーエラーが発生しました' });
+  }
+};
+
+// いいね機能
+exports.toggleLike = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+    if (!post) {
+      return res.status(404).json({ message: '商品が見つかりません' });
+    }
+
+    const index = post.likes.indexOf(req.user.id);
+    if (index === -1) {
+      post.likes.push(req.user.id);
+    } else {
+      post.likes.splice(index, 1);
+    }
+
+    await post.save();
+    res.json({ likes: post.likes.length });
+  } catch (error) {
+    res.status(500).json({ message: 'サーバーエラーが発生しました' });
   }
 };
 
