@@ -7,10 +7,13 @@ const compression = require('compression');
 const morgan = require('morgan');
 
 // ルーターのインポート
-const authRoutes = require('./routes/auth');
-const postRoutes = require('./routes/posts');
-const paymentRoutes = require('./routes/payment');
-const userRoutes = require('./routes/users');
+const authRoutes = require('./routes/authRoutes');
+const postRoutes = require('./routes/postRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
+const userRoutes = require('./routes/userRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const webhookRoutes = require('./routes/webhookRoutes');
+const purchaseRoutes = require('./routes/purchaseRoutes');
 
 const app = express();
 
@@ -27,8 +30,8 @@ mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true
 })
-.then(() => console.log('MongoDB connected'))
-.catch(err => console.error('MongoDB connection error:', err));
+.then(() => console.log('MongoDB接続成功'))
+.catch(err => console.error('MongoDB接続エラー:', err));
 
 // レート制限の設定
 const rateLimit = require('express-rate-limit');
@@ -43,6 +46,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/webhooks', webhookRoutes);
+app.use('/api/purchases', purchaseRoutes);
 
 // エラーハンドリング
 app.use((err, req, res, next) => {
@@ -55,5 +61,5 @@ app.use((err, req, res, next) => {
 // サーバー起動
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`サーバーがPORT ${PORT}で起動しました`);
 });
